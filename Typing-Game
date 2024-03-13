@@ -1,0 +1,1248 @@
+
+import tester.*; // The tester library
+
+import javalib.worldimages.*; // images, like RectangleImage or OverlayImages
+import javalib.funworld.*; // the abstract World class and the big-bang library
+import java.awt.Color; // general colors (as triples of red,green,blue values)
+import java.util.Random;
+
+//provides methods for generating random words 
+class Utils {
+  
+  /* TEMPLATE 
+   * FIELDS: n/a
+   * 
+   * METHODS: 
+   * this.gen(Random seed) -- String
+   * this.genHelp(int length, Random seed, String acc) -- String 
+   * this.letterGen(int num) -- String
+   * 
+   * METHODS FOR FIELDS:
+   * this.gen(Random seed) -- String
+   * this.genHelp(int length, Random seed, String acc) -- String 
+   * this.letterGen(int num) -- String
+   * 
+   */
+  
+  String letters = "abcdefghijklmnopqrstuvwxyz";
+
+  //generates random string with a specified length 
+  String gen(Random seed) {
+    return this.genHelp(seed.nextInt(6), seed, "");
+  }
+
+  //generates random string with a given length 
+  String gen(Random seed, int amtWord) {
+    return this.genHelp((seed.nextInt(amtWord - 1)) + 1, seed, "");
+  }
+
+  // helper method to generate words recursively
+  String genHelp(int length, Random seed, String acc) {
+    if (length > 0) {
+      return genHelp(length - 1, seed, acc + letterGen(seed.nextInt(25)));
+    }
+    else {
+
+      return acc;
+    }
+  }
+
+  //returns single character based on index
+  String letterGen(int num) {
+    return letters.substring(num, num + 1);
+  }
+}
+
+//represents game state
+class ZTypeWorld extends World {
+  Random seed; // random object
+  long score; // score that the player
+  int level; // level that the player is on
+  ILoWord words;//  list of words in game
+  int waiting; // time for waiting on tick
+  int ramping; // equation for ramping 
+  int amountOfWords; // amount of words left in thing
+  boolean completeLevel; // boolean if the level is complete
+
+  //new instance of ZTypeWorld with random seed
+  ZTypeWorld() {
+    this(new Random());
+  }
+
+  //constructor for use in testing, with a specified Random object
+  ZTypeWorld(Random seed) {
+    this(seed, 0, 1, new MtLoWord(), 100, false, 7);
+  }
+
+  //constructor for new ZTypeWorld with given parameters
+  ZTypeWorld(Random seed, long score, int level, ILoWord words) {
+    this(seed, score, level, words, 100, false, level * 2 + 5);
+  }
+
+  //constructor for a new ZTypeWorld instance
+  ZTypeWorld(Random seed, long score, int level, ILoWord words, int waiting, boolean completeLevel,
+      int amountOfWords) {
+    this.seed = seed;
+    this.score = score;
+    this.level = level;
+    this.words = words;
+    this.waiting = waiting;
+    this.amountOfWords = amountOfWords;
+    this.ramping = 5 + Math
+        .round(Math.round(Math.floor(3.36438 * Math.log((1.7763 * level) + 0.113457) - 0.461258)));
+    this.completeLevel = completeLevel;
+  }
+  
+  /* TEMPLATE 
+   * FIELDS: 
+   * this.seed -- Random
+   * this.score -- long
+   * this.level -- int
+   * this.words -- ILoWord
+   * this.waiting -- int 
+   * this.amountOfWords -- int 
+   * this.ramping -- double 
+   * this.complete -- boolean
+   * 
+   * METHODS: 
+   * this.makeScene() -- WorldScene
+   * this.onTick() -- ZTypeWorld
+   * this.worldEnds() -- WorldEnd
+   * this.makeAFinalScene() -- WorldScene
+   * this.onKeyEvent(String key) -- ZTypeWorld
+   * 
+   * METHODS FOR FIELDS: 
+   * this.words.draw(new WorldScene() -- WorldScene
+   * this.words.addToEnd() -- ILoWord
+   * this.words.gameOver() -- WorldEnd
+   * this.makeAFinalScene() -- WorldEnd
+   * this.makeScene() -- WorldEnd
+   * this.words.checkAndReduce(key ??!!) -- ZTypeWorld
+   * this.words.filterMaybe() -- ZTypeWorld
+   * this.words.firstEmpty() -- ZTypeWorld
+   * this.words.filterOutEmpties() -- ZTypeWorld
+   */
+
+  //creates a new WorldScene
+  public WorldScene makeScene() {
+    if (this.completeLevel) {
+      return (new WorldScene(600, 600))
+          .placeImageXY((new TextImage("Score " + String.valueOf(this.score), 50, Color.GREEN)),
+              300, 300)
+          .placeImageXY(
+              (new TextImage(String.valueOf(this.level) + " Level Clear!", 50, Color.GREEN)), 300,
+              200);
+    }
+    
+    return (this.words.draw(new WorldScene(600, 600)))
+        .placeImageXY(new CircleImage(20, OutlineMode.SOLID, Color.BLUE), 300, 500);
+    // .placeImageXY(new TextImage(String.valueOf(this.score), 100, Color.GREEN),
+    // 100, 100);
+  }
+
+  //moves the Dots on the scene; adds a new Dot at a random location at every onTick
+  public World onTick() {
+    //if game is won and no more words are left to type
+    if (this.amountOfWords == -1 && !this.completeLevel && words.emptySearch()) {
+
+      return new ZTypeWorld(this.seed, this.score, this.level, new MtLoWord(), 50, true, 0);
+    }
+    //if current level is completed and waiting time is up
+    if (this.completeLevel && waiting <= 0) {
+
+      return new ZTypeWorld(this.seed, this.score, this.level + 1, new MtLoWord(), 100, false,
+          5 + this.level * 2);
+    }
+    //if waiting time is finished and there are still more words
+    if (this.waiting <= 0 && amountOfWords >= 0) {
+
+      ILoWord add = this.words
+          .addToEnd(new InactiveWord(new Utils().gen(seed, ramping), 50 + seed.nextInt(400), 25));
+      return new ZTypeWorld(this.seed, this.score, this.level, add.move(this.level), 200 / level,
+          false, this.amountOfWords - 1);
+    }
+    //if waiting time is finished and there are no more words
+    if (waiting <= 0) {
+      return new ZTypeWorld(this.seed, this.score, this.level, this.words.move(this.level),
+          200 / this.level, this.completeLevel, this.amountOfWords);
+    }
+    //waiting time is still active, game continues
+    return new ZTypeWorld(this.seed, this.score, this.level, this.words, this.waiting - 1,
+        this.completeLevel, this.amountOfWords);
+  }
+
+  //determines world state when for game end
+  public WorldEnd worldEnds() {
+    //if all the words have reached the bottom of the screen
+    if (words.gameOver()) {
+      return new WorldEnd(true, this.makeAFinalScene());
+    }
+    //if game has not finished yet
+    else {
+      return new WorldEnd(false, this.makeScene());
+    }
+  }
+
+  //end scene
+  public WorldScene makeAFinalScene() {
+    return (new WorldScene(600, 600)).placeImageXY(new TextImage("Game Over.", 24, Color.RED),
+        300, 300);
+  }
+
+  //handles key events
+  public ZTypeWorld onKeyEvent(String key) {
+    long newscore = 0;
+    //processes typed key and returns new ZTypeWorld instance with updated words list
+    ZTypeWorld blah = new ZTypeWorld(this.seed, this.score, this.level,
+        this.words.checkAndReduce(key), this.waiting, false, this.amountOfWords);
+    
+    //checks if first word is empty 
+    if (blah.words.filterMaybe() && blah.words.firstEmpty()) {
+      //calculate new score based on current score
+      newscore = blah.score + Math.round(2 * Math.pow(level, 1.08));
+    }
+    else {
+      //return current score
+      newscore = blah.score;
+    }
+    //new ZTypeWorld instance with updated score and updated word list
+    return new ZTypeWorld(blah.seed, newscore, blah.level, blah.words.filterOutEmpties(),
+        this.waiting, false, this.amountOfWords);
+  }
+}
+
+interface ILoWord {
+  /*
+   * methods sort() returns ILoWord of sorted list isSorted() returns boolean if
+   * sorted interleave(ILoWord) combines two list of worlds in alternating order
+   * merge(ILoWord) combines two lists sorted checkAndReduce(String) takes the
+   * first letters and removes it if it matches addToEnd(IWord word) returns
+   * ILoWord with new word at the end filterOutEmpties() returns list without
+   * empty strings draw(WorldScene) returns world scene of drawn words
+   * 
+   * Helpers ILoWord sortCompare(IWord) compares the word for which is greater
+   * returns true if first is less than IWord boolean isSortcompare(IWord) helper
+   * to see returns true if list is sorted ILoWord mergehelp(IWord, ConsLoWord);
+   * Takes a word and determiens which is greater to not add to the new list
+   */
+
+  ILoWord checkAndReduce(String chari); //updates word list based on typed char
+
+  ILoWord addToEnd(IWord word); //adds given word to end of list 
+
+  ILoWord filterOutEmpties(); //removes empty words from list
+
+  WorldScene draw(WorldScene world); //draw world scene by drawing each word in the list recursively
+
+  ILoWord newActive(String chari); //updates activeness of words in list based on typed char
+
+  boolean nullChar(String chari); //checks if any word in the list matches the typed char
+
+  ActiveWord findActive(String chari); //gets first active word in list based on given char
+
+  boolean filterMaybe(); 
+  //indicates if the first element is blank or if the rest of the list is empty 
+
+  ILoWord move(int level); //moves words on screen based on given level
+
+  boolean firstEmpty(); //returns true if the first element is blank
+
+  boolean gameOver(); //check if game is over
+
+  boolean emptySearch(); //indicates the list is not empty 
+
+}
+
+//represents an empty list of words
+class MtLoWord implements ILoWord {
+  /*
+   * no constructor for MtLoWord
+   * 
+   * list of methods sort() returns ILoWord of sorted list isSorted() returns
+   * boolean if sorted interleave(ILoWord) combines two list of worlds in
+   * alternating order merge(ILoWord) combines two lists sorted
+   * checkAndReduce(String) takes the first letters and removes it if it matches
+   * addToEnd(IWord word) returns ILoWord with new word at the end
+   * filterOutEmpties() returns list without empty strings draw(WorldScene)
+   * returns world scene of drawn words
+   * 
+   * * Helpers ILoWord sortCompare(IWord) return word and mt boolean
+   * isSortcompare(IWord) returns true ILoWord mergehelp(IWord, ConsLoWord);
+   * returns the aurgment ConsLoWord
+   */
+
+  //constructor for an empty list of words
+  MtLoWord() {
+  }
+
+  //indicates an empty ZTypeWorld
+  public boolean emptySearch() {
+    return true;
+  }
+
+  //indicates that there are no empty words in list 
+  public boolean firstEmpty() {
+    return false;
+  }
+
+  //determines end of game 
+  public boolean gameOver() {
+    return false;
+  }
+
+  //no empty words to filter in list 
+  public boolean filterMaybe() {
+    return false;
+  }
+
+  //no words to check and reduce in list 
+  public ILoWord checkAndReduce(String chari) {
+    return this;
+  }
+
+  //adds word to end of list 
+  public ILoWord addToEnd(IWord word) {
+    return new ConsLoWord(word, this);
+  }
+
+  //returns list without any empty words
+  public ILoWord filterOutEmpties() {
+    return this;
+  }
+
+  public WorldScene draw(WorldScene world) {
+    return world;
+  }
+
+  //returns worldScene unchanged 
+  public ILoWord newActive(String chari) {
+    return this;
+  }
+
+  //indicates that a char is not found
+  public boolean nullChar(String chari) {
+    return false;
+  }
+
+  //throws exception because no active words in an empty list 
+  public ActiveWord findActive(String chari) {
+    throw new IllegalArgumentException("Shouldn't be here");
+  }
+
+  //no words to move, returns empty list 
+  public ILoWord move(int level) {
+    return this;
+  }
+
+}
+
+//represents a non-empty list of words
+class ConsLoWord implements ILoWord {
+  /*
+   * fields IWord first ... IWord ILoWord rest ... ILoWord
+   * 
+   * list of methods sort() returns ILoWord of sorted list isSorted() returns
+   * boolean if sorted interleave(ILoWord) combines two list of worlds in
+   * alternating order merge(ILoWord) combines two lists sorted
+   * checkAndReduce(String) takes the first letters and removes it if it matches
+   * addToEnd(IWord word) returns ILoWord with new word at the end
+   * filterOutEmpties() returns list without empty strings draw(WorldScene)
+   * returns world scene of drawn words
+   * 
+   * Helpers ILoWord sortCompare(IWord) does first step of bubble sort for sorting
+   * consloword boolean isSortcompare(IWord) compares all words in consloword and
+   * then returns true if sorted ILoWord mergehelp(IWord, ConsLoWord); adds the
+   * smaller of the first argument of both this and ConsLoWord to the new ILoWord
+   * then recurrsions to fininsh both list of words
+   */
+  IWord first;
+  ILoWord rest;
+
+  //constructor for ConsLoWord
+  ConsLoWord(IWord first, ILoWord rest) {
+    this.first = first;
+    this.rest = rest;
+  }
+
+  /* TEMPLATE 
+   * FIELDS: 
+   * this.first -- IWord
+   * this.rest -- ILoWord
+   * 
+   * METHODS: 
+   * this.filterMaybe() -- boolean
+   * this.firstEmpty() -- boolean 
+   * this.checkAndReduce(String chari) -- ILoWord
+   * this.newActive(String chari) -- ILoWord
+   * this.findActive(String chari) -- ActiveWord
+   * this.nullChar(String chari) -- boolean
+   * this.move(int level) -- ILoWord
+   * this.addToEnd(IWord word) -- ILoWord
+   * this.filterOutEmpties() -- ILoWord
+   * this.draw(WorldScene world) -- WorldScene
+   * this.gameOver() -- boolean
+   * this.mt() -- boolean 
+   * 
+   * METHODS FOR FIELDS: 
+   * this.first.blanky() -- boolean
+   * this.rest.filterMaybe() -- boolean
+   * this.first.isActive() -- boolean
+   * this.first.wordstuff(chari) -- IWord
+   * this.nullChar(chari) -- boolean
+   * this.findActive(chari) -- ActiveWord
+   * this.newActive(chari) -- ILoWord
+   * this.first.nullChar(chari) -- boolean
+   * this.rest.newActive(chari) -- ILoWord
+   * this.first.nullChar(chari) -- boolean
+   * this.first.createActive() -- ActiveWord
+   * this.rest.findActive(chari) -- ActiveWord
+   * this.first.nullChar(chari) -- boolean
+   * this.rest.nullChar(chari) -- boolean
+   * this.first.createMove(level) -- IWord
+   * this.rest.move(level) -- ILoWord
+   * this.rest.addToEnd(word) -- ILoWord
+   * this.rest.filterOutEmpties() -- ILoWord
+   * this.rest.draw -- WorldScene
+   * this.first.draw(world) -- WorldScene
+   * this.first.below() -- boolean
+   * this.rest.gameOver() -- boolean
+   * this.first.mt() -- boolean 
+   * this.rest.mt() -- boolean 
+   */
+  
+  //indicates the list is not empty 
+  public boolean emptySearch() {
+    return false;
+  }
+
+  //indicates if the first element is blank or if the rest of the list is empty 
+  public boolean filterMaybe() {
+    return this.first.blanky() || this.rest.filterMaybe();
+  }
+
+  //returns true if the first element is blank
+  public boolean firstEmpty() {
+    return this.first.blanky();
+  }
+
+  //updates word list based on typed char
+  public ILoWord checkAndReduce(String chari) {
+    //checks if first word is active 
+    if (first.isActive()) {
+      return new ConsLoWord(first.wordstuff(chari), rest);// .filterOutEmpties());
+    }
+    //checks that typed character is not null 
+    if (!this.nullChar(chari)) {
+      return this;
+    }
+    //otherwise, creates a new list with the first word active based on typed char
+    return new ConsLoWord(this.findActive(chari), (this.newActive(chari)));
+  }
+
+  //updates activeness of words in list based on typed char
+  public ILoWord newActive(String chari) {
+    //checks if first word is null
+    if (this.first.nullChar(chari)) {
+      //creates new list with a now inactive first word 
+      return new ConsLoWord(new InactiveWord("", 0, 0), this.rest);
+    }
+    //otherwise, creates a new list with first word unchanged, and updates rest of list
+    return new ConsLoWord(this.first, this.rest.newActive(chari));
+  }
+
+  //gets first active word in list based on given char
+  public ActiveWord findActive(String chari) {
+    //checks if char matches the first word
+    if (this.first.nullChar(chari)) {
+      //returns the first word as an active word
+      return first.createActive();
+    }
+    //recursively finds next active word in list 
+    return rest.findActive(chari);
+  }
+
+  //checks if any word in the list matches the typed char
+  public boolean nullChar(String chari) {
+    return first.nullChar(chari) || rest.nullChar(chari);
+  }
+
+  //moves words on screen based on given level
+  public ILoWord move(int level) {
+    return new ConsLoWord(this.first.createMove(level), this.rest.move(level));
+  }
+
+  //adds given word to end of list 
+  public ILoWord addToEnd(IWord word) {
+    return new ConsLoWord(first, rest.addToEnd(word));
+  }
+
+  //removes empty words from list
+  public ILoWord filterOutEmpties() {
+    //checks if first word is empty, returns filtered list
+    if (this.first.blanky()) {
+      return this.rest.filterOutEmpties();
+    }
+    else {
+      return new ConsLoWord(this.first, this.rest.filterOutEmpties());
+    }
+  }
+
+  //draw world scene by drawing each word in the list recursively 
+  public WorldScene draw(WorldScene world) {
+    return rest.draw(first.draw(world));
+  }
+
+  //check if game is over 
+  public boolean gameOver() {
+    //checks if any word is below the screen or if there are any more words in list
+    return first.below() || rest.gameOver();
+  }
+
+}
+
+interface IWord {
+  /*
+   * no feilds its an interface methods boolean compare(IWord) ... boolean
+   * compareHelper(String) both methods help compare two IWords IWord
+   * wordstuff(String chari) returns IWord, without chari if the word starts with
+   * chari blanky(); returns true if word is an empty string "" WorldScene
+   * draw(WorldScene) places image of word onto world scene.
+   * 
+   */
+  boolean isActive();
+
+  boolean compare(IWord comparer);
+
+  boolean compareHelper(String comparer);
+
+  IWord wordstuff(String chari);
+
+  boolean blanky();
+
+  WorldScene draw(WorldScene world);
+
+  boolean nullChar(String chari);
+
+  ActiveWord createActive();
+
+  IWord createMove(int level);
+
+  boolean below();
+
+}
+
+//represents an active word in the ZType game
+class ActiveWord implements IWord {
+  /*
+   * no feilds its an interface methods boolean compare(IWord) ... boolean
+   * compareHelper(String) both methods help compare two IWords IWord
+   * wordstuff(String chari) returns IWord, without chari if the word starts with
+   * chari blanky(); returns true if word is an empty string "" WorldScene
+   * draw(WorldScene) places image of word onto world scene. Active word being
+   * MAGENTA
+   * 
+   */
+  String word;
+  int x;
+  int y;
+
+
+  //constructs ActiveWord
+  ActiveWord(String word, int x, int y) {
+    this.word = word;
+    this.x = x;
+    this.y = y;
+  }
+  
+  /* TEMPLATE 
+   * FIELDS: 
+   * this.word -- String
+   * this.x -- int
+   * this.y -- int
+   * 
+   * METHODS: 
+   * this.nullChar(String chari) -- boolean
+   * this.isActive() -- boolean
+   * this.wordsStuff(String chari) -- IWord
+   * this.compare(IWord comparer) -- boolean
+   * this.compareHelper(String comparer) -- boolean
+   * this.blanky() -- boolean
+   * this.draw(WorldScene world) -- WorldScene
+   * this.createActive() -- ActiveWord
+   * this.createMove(int level) -- IWord
+   * this.below() -- boolean
+   * 
+   * METHODS FOR FIELDS: 
+   * this.word.nullChar(String chari) -- boolean
+   * this.word.isActive() -- boolean
+   * this.word.wordsStuff(String chari) -- IWord
+   * this.word.compare(IWord comparer) -- boolean
+   * this.word.compareHelper(String comparer) -- boolean
+   * this.word.blanky() -- boolean
+   * this.word.draw(WorldScene world) -- WorldScene
+   * this.word.createActive() -- ActiveWord
+   * this.word.createMove(int level) -- IWord
+   * this.word.below() -- boolean
+   * this.x.nullChar(String chari) -- boolean
+   * this.x.isActive() -- boolean
+   * this.x.wordsStuff(String chari) -- IWord
+   * this.x.compare(IWord comparer) -- boolean
+   * this.x.compareHelper(String comparer) -- boolean
+   * this.x.blanky() -- boolean
+   * this.x.draw(WorldScene world) -- WorldScene
+   * this.x.createActive() -- ActiveWord
+   * this.x.createMove(int level) -- IWord
+   * this.x.below() -- boolean
+   * this.y.nullChar(String chari) -- boolean
+   * this.y.isActive() -- boolean
+   * this.y.wordsStuff(String chari) -- IWord
+   * this.y.compare(IWord comparer) -- boolean
+   * this.y.compareHelper(String comparer) -- boolean
+   * this.y.blanky() -- boolean
+   * this.y.draw(WorldScene world) -- WorldScene
+   * this.y.createActive() -- ActiveWord
+   * this.y.createMove(int level) -- IWord
+   * this.y.below() -- boolean
+   */
+  
+  
+  //check if given char is null
+  public boolean nullChar(String chari) {
+    return false;
+  }
+
+  //check if given char is active 
+  public boolean isActive() {
+    return true;
+  }
+
+  //checks if first char matches given char, returns updates ActiveWord
+  public IWord wordstuff(String chari) {
+    //checks that it is not empty, and matches char
+    if (word.length() > 0 && word.substring(0, 1).equals(chari)) {
+      //returns new ActiveWord without first char
+      return new ActiveWord(word.substring(1), x, y);
+    }
+    return this;
+  }
+
+  //compare this word with another word
+  public boolean compare(IWord comparer) {
+    return comparer.compareHelper(this.word);
+  }
+
+  //helper to compare two words ignoring case
+  public boolean compareHelper(String comparer) {
+    return (word.toLowerCase().compareTo(comparer.toLowerCase()) <= 0);
+  }
+
+  //checks if word is empty
+  public boolean blanky() {
+    return word.equals("");
+  }
+
+  //places word on world scene at coordinates 
+  public WorldScene draw(WorldScene world) {
+    return world.placeImageXY(new TextImage(word, 24, Color.MAGENTA), x, y);
+  }
+
+  //returns the the ActiveWord
+  public ActiveWord createActive() {
+    return this;
+  }
+
+  //returns new ActiveWord with adjusted y-cor
+  public IWord createMove(int level) {
+    return new ActiveWord(this.word, this.x, this.y + level * 6);
+  }
+
+  //checks if the ActiveWord is below the y-cor
+  public boolean below() {
+    return y >= 600;
+  }
+}
+
+//represents an inactive word in the ZType game
+class InactiveWord implements IWord {
+  
+  //represents a word and its position 
+  String word;
+  int x;
+  int y;
+  
+  //constructs an InactiveWord
+  InactiveWord(String word, int x, int y) {
+    this.word = word;
+    this.x = x;
+    this.y = y;
+  }
+  
+  /* TEMPLATE 
+   * FIELDS:
+   * this.word -- String
+   * this.x -- int
+   * this.y -- int
+   * 
+   * METHODS: 
+   * this.isActive() -- boolean
+   * this.nullChar(String chari) -- boolean
+   * this.createMove(int level) -- IWord
+   * this.createActive() -- ActiveWord
+   * this.compare(IWord comparer) -- boolean
+   * this.wordstuff(String chari) -- IWord
+   * this.compareHelper(String comparer) -- boolean
+   * this.wordstuff(String chari) -- IWord
+   * this.compareHelper(String comparer) -- boolean
+   * this.blanky() -- boolean
+   * this.draw(WorldScene world) -- WorldScene
+   * this.below() -- boolean
+   * 
+   * METHODS FOR FIELDS: 
+   * this.word.isActive() -- boolean
+   * this.word.nullChar(String chari) -- boolean
+   * this.word.createMove(int level) -- IWord
+   * this.word.createActive() -- ActiveWord
+   * this.word.compare(IWord comparer) -- boolean
+   * this.word.wordstuff(String chari) -- IWord
+   * this.word.compareHelper(String comparer) -- boolean
+   * this.word.wordstuff(String chari) -- IWord
+   * this.word.compareHelper(String comparer) -- boolean
+   * this.word.blanky() -- boolean
+   * this.word.draw(WorldScene world) -- WorldScene
+   * this.word.below() -- boolean
+   * 
+   * this.x.isActive() -- boolean
+   * this.x.nullChar(String chari) -- boolean
+   * this.x.createMove(int level) -- IWord
+   * this.x.createActive() -- ActiveWord
+   * this.x.compare(IWord comparer) -- boolean
+   * this.x.wordstuff(String chari) -- IWord
+   * this.x.compareHelper(String comparer) -- boolean
+   * this.x.wordstuff(String chari) -- IWord
+   * this.x.compareHelper(String comparer) -- boolean
+   * this.x.blanky() -- boolean
+   * this.x.draw(WorldScene world) -- WorldScene
+   * this.x.below() -- boolean
+   * 
+   * this.y.isActive() -- boolean
+   * this.y.nullChar(String chari) -- boolean
+   * this.y.createMove(int level) -- IWord
+   * this.y.createActive() -- ActiveWord
+   * this.y.compare(IWord comparer) -- boolean
+   * this.y.wordstuff(String chari) -- IWord
+   * this.y.compareHelper(String comparer) -- boolean
+   * this.y.wordstuff(String chari) -- IWord
+   * this.y.compareHelper(String comparer) -- boolean
+   * this.y.blanky() -- boolean
+   * this.y.draw(WorldScene world) -- WorldScene
+   * this.y.below() -- boolean
+   */
+  
+  //checks if first char of word matches given char
+  public boolean nullChar(String chari) {
+    return word.length() > 0 && word.substring(0, 1).equals(chari);
+  }
+
+  //creates a new InactiveWord with updated y-cor
+  public IWord createMove(int level) {
+    return new InactiveWord(this.word, this.x, this.y + level * 6);
+  }
+  
+  //determines if the word is active
+  public boolean isActive() {
+    return false;
+  }
+  
+  //removes first char in the active word
+  public ActiveWord createActive() {
+    return new ActiveWord(this.word.substring(1), this.x, this.y);
+  }
+
+  //compares this word with another word
+  public boolean compare(IWord comparer) {
+    return comparer.compareHelper(this.word);
+  }
+
+  //returns object; handler for char matching
+  public IWord wordstuff(String chari) {
+    return this;
+  }
+
+  //ignoring case, compares current word alphabetically with another word
+  public boolean compareHelper(String comparer) {
+    return (word.toLowerCase().compareTo(comparer.toLowerCase()) <= 0);
+  }
+
+  //checks if word is empty
+  public boolean blanky() {
+    return word.equals("");
+  }
+
+  //places word onto WorldScene at coordinates
+  public WorldScene draw(WorldScene world) {
+    return world.placeImageXY(new TextImage(word, 24, Color.black), x, y);
+  }
+
+  //checks if word is below y-cor threshold
+  public boolean below() {
+    return y >= 600;
+  }
+}
+
+//tests animation of game 
+class ExampleAnimate {
+  // for a random seed
+
+  
+  boolean testBigBang(Tester t) {
+    ZTypeWorld world = new ZTypeWorld(new Random());
+    int worldWidth = 600;
+    int worldHeight = 600;
+    double tickRate = .01;
+    return world.bigBang(worldWidth, worldHeight, tickRate);
+  }
+   
+  // for a set seed of 1
+  /*
+   * boolean testBigBangSetSeed(Tester t) { ZTypeWorld world = new ZTypeWorld(new
+   * Random(1)); int worldWidth = 600; int worldHeight = 600; double ticxkRate =
+   * .01; return world.bigBang(worldWidth, worldHeight, tickRate); }
+   */
+
+  IWord word1 = new ActiveWord("alfred", 1, 1);
+  IWord word2 = new InactiveWord("bobby", 2, 2);
+  IWord word3 = new ActiveWord("bpank", 3, 3);
+  IWord word4 = new InactiveWord("cat", 4, 4);
+  IWord word5 = new ActiveWord("dog", 5, 5);
+  IWord word6 = new InactiveWord("elephant", 6, 6);
+  IWord word7 = new ActiveWord("frog", 7, 7);
+  IWord word8 = new InactiveWord("gorilla", 8, 8);
+  IWord word9 = new ActiveWord("hobbit", 9, 9);
+  IWord word10 = new InactiveWord("igauna", 10, 10);
+  IWord word11 = new ActiveWord("jackRabbit", 11, 11);
+  IWord word12 = new InactiveWord("kangaroo", 12, 12);
+  IWord word13 = new ActiveWord("llama", 13, 13);
+  IWord word14 = new InactiveWord("monkey", 14, 14);
+  IWord word15 = new ActiveWord("nobhead", 15, 15);
+  IWord word16 = new InactiveWord("ostrich", 16, 16);
+  IWord word17 = new ActiveWord("worm", 17, 17);
+  IWord word18 = new InactiveWord("bloop", 18, 18);
+  IWord word19 = new ActiveWord("", 19, 19);
+  IWord word20 = new InactiveWord("ostrich", 160, 10);
+  IWord word21 = new ActiveWord("worm", 93, 80);
+  IWord word22 = new InactiveWord("bloop", 40, 160);
+  ILoWord mt = new MtLoWord();
+  ILoWord list17 = new ConsLoWord(new ActiveWord("w", 93, 93), mt);
+  ILoWord list15 = new ConsLoWord(word20, new ConsLoWord(word21, new ConsLoWord(word22, mt)));
+  ILoWord list1 = new ConsLoWord(word1, mt);
+  ILoWord list2 = new ConsLoWord(word2, new ConsLoWord(word1, mt));
+  ILoWord list3 = new ConsLoWord(word1, new ConsLoWord(word2, mt));
+  ILoWord list4 = new ConsLoWord(word2, new ConsLoWord(word3, new ConsLoWord(word1, mt)));
+  ILoWord list5 = new ConsLoWord(word2, new ConsLoWord(word3, new ConsLoWord(word17, mt)));
+  ILoWord list6 = new ConsLoWord(word2,
+      new ConsLoWord(word3, new ConsLoWord(word18, new ConsLoWord(word7, mt))));
+  ILoWord list7 = new ConsLoWord(word1, new ConsLoWord(word2, new ConsLoWord(word3, mt)));
+  ILoWord list8 = new ConsLoWord(word4,
+      new ConsLoWord(word5, new ConsLoWord(word6, new ConsLoWord(word8, mt))));
+  ILoWord list9 = new ConsLoWord(word2, new ConsLoWord(word3, mt));
+  ILoWord list10 = new ConsLoWord(word1, new ConsLoWord(word2, new ConsLoWord(word1, mt)));
+  ILoWord list11 = new ConsLoWord(word19,
+      new ConsLoWord(word1, new ConsLoWord(word2, new ConsLoWord(word1, mt))));
+  ILoWord list12 = new ConsLoWord(word1,
+      new ConsLoWord(word2, new ConsLoWord(word1, new ConsLoWord(word2, mt))));
+  ILoWord list13 = new ConsLoWord(word1, new ConsLoWord(word2, new ConsLoWord(word1, mt)));
+  ILoWord list14 = new ConsLoWord(word2, new ConsLoWord(word2, new ConsLoWord(word3,
+      new ConsLoWord(word3, new ConsLoWord(word1, new ConsLoWord(word17, mt))))));
+  ILoWord list16 = new ConsLoWord(new InactiveWord("", 100, 100), new MtLoWord());
+  ILoWord words1 = new ConsLoWord(new InactiveWord("hello", 100, 100), new MtLoWord());
+  ILoWord words2 = new ConsLoWord(new ActiveWord("hello", 100, 100), new MtLoWord());
+  ILoWord words3 = new ConsLoWord(new ActiveWord("hello", 50, 50),
+      new ConsLoWord(new InactiveWord("world", 200, 100), new MtLoWord()));
+  long num = 50;
+  ILoWord mtt = new MtLoWord();
+  ZTypeWorld world = new ZTypeWorld(new Random(5));
+  ZTypeWorld world1 = new ZTypeWorld(new Random(5), 0, 1, mt, 99, false, 7);
+  ZTypeWorld world2 = new ZTypeWorld(new Random(5), 0, 1, mt, 1, false, 7);
+  ZTypeWorld world3 = new ZTypeWorld(new Random(5), 0, 1, mt, 0, false, 7);
+  ZTypeWorld world4 = new ZTypeWorld(new Random(5), 0, 1, mt, 0, true, 0);
+  ZTypeWorld worldEnded = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new InactiveWord("ryy", 156, 35678), mt), 200, false, 6);
+
+  ZTypeWorld world5 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new ActiveWord("ryy", 156, 31), mt), 200, false, 6);
+  ZTypeWorld world7 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new ActiveWord("y", 156, 31), mt), 200, false, 6);
+  ZTypeWorld world6 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new InactiveWord("ryy", 156, 31),
+          new ConsLoWord(new InactiveWord("yyy", 156, 31), mt)),
+      200, false, 6);
+  ZTypeWorld worldTest5 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new ActiveWord("yy", 156, 31), mt), 200, false, 6);
+  ZTypeWorld worldTest6 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new ActiveWord("yy", 156, 31),
+          new ConsLoWord(new InactiveWord("yyy", 156, 31), mt)),
+      200, false, 6);
+  ZTypeWorld worldTest7 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new ActiveWord("yy", 156, 31),
+          new ConsLoWord(new InactiveWord("ryy", 156, 31), mt)),
+      200, false, 6);
+  ZTypeWorld worldTest8 = new ZTypeWorld(new Random(5), 2, 1, mt, 200, false, 6);
+
+  ZTypeWorld worldTest3 = new ZTypeWorld(new Random(5), 0, 1,
+      new ConsLoWord(new InactiveWord("ryy", 156, 31), mt), 200, false, 6);
+  ZTypeWorld worldTest4 = new ZTypeWorld(new Random(5), 0, 2, mt, 100, false, 7);
+  ILoWord list2Test = new ConsLoWord(new InactiveWord("", 0, 0), new ConsLoWord(word1, mt));
+  //MINE 
+  IWord word07 = new ActiveWord("rog", 7, 7);
+  IWord wordMtA = new ActiveWord("", 13, 13);
+  IWord wordMtI = new InactiveWord("", 14, 14);
+
+  IWord charA = new ActiveWord("", 3, 3);
+  IWord charI = new InactiveWord("", 4, 4);
+
+  IWord charAf = new ActiveWord("a", 3, 3);
+  IWord charIf = new InactiveWord("b", 4, 4);
+
+  IWord word021 = new ActiveWord("orm", 93, 80);
+  IWord word022 = new ActiveWord("loop", 40, 160);
+
+  //tests Utils method 
+  boolean testGen(Tester t) {
+    return t.checkExpect(new Utils().gen(new Random(1234)), "ii")
+        && t.checkExpect(new Utils().gen(new Random(1235)), "velyt")
+        && t.checkExpect(new Utils().gen(new Random(1236)), "nwnqv");
+  }
+
+  //tests Utils method with peram for generating strings of specified lengths
+  boolean testGenWithAmount(Tester t) {
+    return t.checkExpect(new Utils().gen(new Random(1234), 4), "iiu")
+        && t.checkExpect(new Utils().gen(new Random(1235), 5), "vel")
+        && t.checkExpect(new Utils().gen(new Random(1236), 7), "nwnqvj");
+  }
+
+  //tests Utils method which generates a random string recursively 
+  boolean testGenHelp(Tester t) {
+    return t.checkExpect(new Utils().genHelp(2, new Random(7891), ""), "io")
+        && t.checkExpect(new Utils().genHelp(3, new Random(7892), ""), "lgt")
+        && t.checkExpect(new Utils().genHelp(2, new Random(7893), ""), "lt")
+        && t.checkExpect(new Utils().genHelp(3, new Random(7894), ""), "jff")
+        && t.checkExpect(new Utils().genHelp(5, new Random(7895), ""), "ksyvr");
+  }
+
+  //tests Utils method which generates a random letter
+  boolean testLetterGen(Tester t) {
+    return t.checkExpect(new Utils().letterGen(25), "z")
+        && t.checkExpect(new Utils().letterGen(1), "b")
+        && t.checkExpect(new Utils().letterGen(3), "d")
+        && t.checkExpect(new Utils().letterGen(0), "a")
+        && t.checkExpect(new Utils().letterGen(13), "n");
+  }
+
+  long zero = 0;
+
+  boolean testConstructorDefault(Tester t) {
+    ZTypeWorld mtWorld = new ZTypeWorld();
+    ZTypeWorld randomSeed = new ZTypeWorld(new Random(5));
+    // Check initial values for score, level, words, etc.
+    return t.checkExpect(mtWorld.score, zero) && t.checkExpect(mtWorld.level, 1)
+        && t.checkExpect(mtWorld.words.emptySearch(), true)
+        && t.checkExpect(randomSeed.seed, new Random(5));
+  }
+
+  //tests default ZTypeWorld constructor 
+  boolean testConstructorFull(Tester t) {
+    Random seed = new Random(456);
+    long score = 100;
+    int level = 2;
+    ILoWord words = new MtLoWord();
+    ZTypeWorld world = new ZTypeWorld(seed, score, level, words);
+    // checks initial vals
+    return t.checkExpect(world.score, score) && t.checkExpect(world.level, level)
+        && t.checkExpect(world.words, words);
+  }
+
+  //tests makeScene method 
+  boolean testMakeScene(Tester t) {
+    // tests on an empty words list
+    return t.checkExpect(new ZTypeWorld(new Random()).makeScene(),
+        new WorldScene(600, 600).placeImageXY(new CircleImage(20, OutlineMode.SOLID, Color.BLUE),
+            300, 500))
+        // tests on a non-empty words list
+        && t.checkExpect(new ZTypeWorld(new Random(), 0, 1, words1).makeScene(),
+            words1.draw(new WorldScene(600, 600))
+                .placeImageXY(new CircleImage(20, OutlineMode.SOLID, Color.BLUE), 300, 500))
+        && t.checkExpect(new ZTypeWorld(new Random(), 0, 1, words2).makeScene(),
+            words2.draw(new WorldScene(600, 600))
+                .placeImageXY(new CircleImage(20, OutlineMode.SOLID, Color.BLUE), 300, 500))
+        && t.checkExpect(new ZTypeWorld(new Random(), 0, 1, words3).makeScene(),
+            words3.draw(new WorldScene(600, 600))
+                .placeImageXY(new CircleImage(20, OutlineMode.SOLID, Color.BLUE), 300, 500))
+        // tests with a specified score and level
+        && t.checkExpect(new ZTypeWorld(new Random(), num, 2, mtt, 0, true, 0).makeScene(),
+            (new WorldScene(600, 600))
+                .placeImageXY(new TextImage("Score 50", 50, Color.GREEN), 300, 300)
+                .placeImageXY(new TextImage("2 Level Clear!", 50, Color.GREEN), 300, 200));
+  }
+
+  //tests draw method on various worlds
+  boolean testDraw(Tester t) {
+    return t.checkExpect(mt.draw(new WorldScene(500, 500)), (new WorldScene(500, 500)))
+        && t.checkExpect(list1.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500)).placeImageXY(new TextImage("alfred", 24, Color.MAGENTA), 1,
+                1))
+        && t.checkExpect(list2.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500)).placeImageXY(new TextImage("bobby", 24, Color.BLACK), 2, 2)
+                .placeImageXY(new TextImage("alfred", 24, Color.MAGENTA), 1, 1))
+        && t.checkExpect(list3.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500))
+                .placeImageXY(new TextImage("alfred", 24, Color.MAGENTA), 1, 1)
+                .placeImageXY(new TextImage("bobby", 24, Color.BLACK), 2, 2))
+        && t.checkExpect(list6.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500)).placeImageXY(new TextImage("bobby", 24, Color.BLACK), 2, 2)
+                .placeImageXY(new TextImage("bpank", 24, Color.MAGENTA), 3, 3)
+                .placeImageXY(new TextImage("bloop", 24, Color.BLACK), 18, 18)
+                .placeImageXY(new TextImage("frog", 24, Color.MAGENTA), 7, 7))
+        && t.checkExpect(list8.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500)).placeImageXY(new TextImage("cat", 24, Color.BLACK), 4, 4)
+                .placeImageXY(new TextImage("dog", 24, Color.MAGENTA), 5, 5)
+                .placeImageXY(new TextImage("elephant", 24, Color.BLACK), 6, 6)
+                .placeImageXY(new TextImage("gorilla", 24, Color.BLACK), 8, 8))
+        && t.checkExpect(list9.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500)).placeImageXY(new TextImage("bobby", 24, Color.BLACK), 2, 2)
+                .placeImageXY(new TextImage("bpank", 24, Color.MAGENTA), 3, 3))
+        && t.checkExpect(list10.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500))
+                .placeImageXY(new TextImage("alfred", 24, Color.MAGENTA), 1, 1)
+                .placeImageXY(new TextImage("bobby", 24, Color.BLACK), 2, 2)
+                .placeImageXY(new TextImage("alfred", 24, Color.MAGENTA), 1, 1))
+        && t.checkExpect(list4.draw((new WorldScene(500, 500))),
+            (new WorldScene(500, 500)).placeImageXY(new TextImage("bobby", 24, Color.BLACK), 2, 2)
+                .placeImageXY(new TextImage("bpank", 24, Color.MAGENTA), 3, 3)
+                .placeImageXY(new TextImage("alfred", 24, Color.MAGENTA), 1, 1));
+
+  }
+
+  //tests mt() method
+  boolean testMt(Tester t) {
+    return t.checkExpect(mt.emptySearch(), true) && t.checkExpect(list1.emptySearch(), false);
+  }
+
+  //tests firstEmpty() method
+  boolean testFirstEmpty(Tester t) {
+    ILoWord mt = new MtLoWord();
+    return t.checkExpect(mt.firstEmpty(), false) && t.checkExpect(list1.firstEmpty(), false)
+        && t.checkExpect(list16.firstEmpty(), true);
+
+  }
+
+  //tests gameOver() method
+  boolean testGameOver(Tester t) {
+    return t.checkExpect(mt.gameOver(), false) && t.checkExpect(list16.gameOver(), false);
+
+  }
+
+  //tests filterMaybe() method
+  boolean testFilterMaybe(Tester t) {
+    return t.checkExpect(mt.filterMaybe(), false) && t.checkExpect(list16.filterMaybe(), true)
+        && t.checkExpect(list12.filterMaybe(), false);
+
+  }
+
+  boolean testAddToEnd(Tester t) { // checks add to end
+    return t.checkExpect(mt.addToEnd(word1), list1)
+        && t.checkExpect(list1.addToEnd(word1), new ConsLoWord(word1, new ConsLoWord(word1, mt)))
+        && t.checkExpect(list2.addToEnd(word2),
+            new ConsLoWord(word2, new ConsLoWord(word1, new ConsLoWord(word2, mt))))
+        && t.checkExpect(list3.addToEnd(word3),
+            new ConsLoWord(word1, new ConsLoWord(word2, new ConsLoWord(word3, mt))))
+        && t.checkExpect(list4.addToEnd(word4),
+            new ConsLoWord(word2,
+                new ConsLoWord(word3, new ConsLoWord(word1, new ConsLoWord(word4, mt)))))
+        && t.checkExpect(list5.addToEnd(word5),
+            new ConsLoWord(word2,
+                new ConsLoWord(word3, new ConsLoWord(word17, new ConsLoWord(word5, mt)))))
+        && t.checkExpect(list6.addToEnd(word6),
+            new ConsLoWord(word2,
+                new ConsLoWord(word3,
+                    new ConsLoWord(word18, new ConsLoWord(word7, new ConsLoWord(word6, mt))))))
+        && t.checkExpect(list7.addToEnd(word7),
+            new ConsLoWord(word1,
+                new ConsLoWord(word2, new ConsLoWord(word3, new ConsLoWord(word7, mt)))))
+        && t.checkExpect(list8.addToEnd(word8),
+            new ConsLoWord(word4,
+                new ConsLoWord(word5,
+                    new ConsLoWord(word6, new ConsLoWord(word8, new ConsLoWord(word8, mt))))))
+        && t.checkExpect(list9.addToEnd(word10),
+            new ConsLoWord(word2, new ConsLoWord(word3, new ConsLoWord(word10, mt))));
+  }
+
+  boolean testFilterOutEmpties(Tester t) { // filters out empty strings ""
+    return t.checkExpect(mt.filterOutEmpties(), mt)
+        && t.checkExpect(list1.filterOutEmpties(), list1)
+        && t.checkExpect(list2.filterOutEmpties(), list2)
+        && t.checkExpect(list3.filterOutEmpties(), list3)
+        && t.checkExpect(list4.filterOutEmpties(), list4)
+        && t.checkExpect(list5.filterOutEmpties(), list5)
+        && t.checkExpect(list6.filterOutEmpties(), list6)
+        && t.checkExpect(list7.filterOutEmpties(), list7)
+        && t.checkExpect(list8.filterOutEmpties(), list8)
+        && t.checkExpect(list9.filterOutEmpties(), list9)
+        && t.checkExpect(list10.filterOutEmpties(), list10)
+        && t.checkExpect(list11.filterOutEmpties(),
+            new ConsLoWord(word1, new ConsLoWord(word2, new ConsLoWord(word1, mt))));
+  }
+
+  //tests newActive(String) method
+  boolean testNewActive(Tester t) {
+    return t.checkExpect(list1.newActive("b"), list1)
+        && t.checkExpect(list2.newActive("b"), list2Test);
+  }
+
+  boolean testNullChar1(Tester t) {
+    return t.checkExpect(list1.nullChar("b"), false) && t.checkExpect(list2.nullChar("b"), true)
+        && t.checkExpect(list3.nullChar("b"), true) && t.checkExpect(list4.nullChar("b"), true)
+        && t.checkExpect(list5.nullChar("z"), false) && t.checkExpect(list17.nullChar("w"), false);
+  }
+
+  boolean testCheckAndReduce(Tester t) { // test check and reduce with a lot of lists
+    return t.checkExpect(mt.checkAndReduce("b"), mt)
+        && t.checkExpect(list1.checkAndReduce("b"), list1)
+        && t.checkExpect(list3.checkAndReduce("f"), list3)
+        && t.checkExpect(list2.checkAndReduce("d"), list2)
+        && t.checkExpect(list10.checkAndReduce("z"), list10)
+        && t.checkExpect(list9.checkAndReduce("d"), list9)
+        && t.checkExpect(list8.checkAndReduce("c"),
+            new ConsLoWord(new ActiveWord("at", 4, 4),
+                new ConsLoWord(new InactiveWord("", 0, 0),
+                    new ConsLoWord(word5, new ConsLoWord(word6, new ConsLoWord(word8, mt))))))
+        && t.checkExpect(list6.checkAndReduce("b"), new ConsLoWord(new ActiveWord("obby", 2, 2),
+            new ConsLoWord(new InactiveWord("", 0, 0), new ConsLoWord(new ActiveWord("bpank", 3, 3),
+                new ConsLoWord((new InactiveWord("bloop", 18, 18)), new ConsLoWord(word7, mt))))));
+
+  }
+
+  //tests move(int) method
+  boolean testMove(Tester t) {
+
+    return t.checkExpect(list1.move(1),
+        new ConsLoWord(new ActiveWord("alfred", 1, 7), new MtLoWord()))
+        && t.checkExpect(list8.move(2),
+            new ConsLoWord(new InactiveWord("cat", 4, 16),
+                new ConsLoWord(new ActiveWord("dog", 5, 17),
+                    new ConsLoWord(new InactiveWord("elephant", 6, 18),
+                        new ConsLoWord(new InactiveWord("gorilla", 8, 20), mt)))))
+        && t.checkExpect(list6.move(4),
+            new ConsLoWord(new InactiveWord("bobby", 2, 26),
+                new ConsLoWord(new ActiveWord("bpank", 3, 27),
+                    new ConsLoWord((new InactiveWord("bloop", 18, 42)),
+                        new ConsLoWord(new ActiveWord("frog", 7, 31), mt)))));
+  }
+
+  //tests onTick() method
+  boolean testOnTick(Tester t) {
+
+    return t.checkExpect(world.onTick(), world1) && t.checkExpect(world2.onTick(), world3)
+        && t.checkExpect(world3.onTick(), worldTest3) && t.checkExpect(world4.onTick(), worldTest4);
+  }
+
+  //tests worldEnds() method
+  boolean testWorldEnds(Tester t) {
+
+    return t.checkExpect(world4.worldEnds(), new WorldEnd(false, world4.makeScene()))
+        && t.checkExpect(worldEnded.worldEnds(), new WorldEnd(true, (new WorldScene(600, 600))
+            .placeImageXY(new TextImage("Game Over.", 24, Color.RED), 300, 300)));
+  }
+
+  //tests makeAFinalScene() method
+  boolean testMakeAFinalScene(Tester t) {
+
+    return t.checkExpect(worldEnded.makeAFinalScene(), (new WorldScene(600, 600))
+        .placeImageXY(new TextImage("Game Over.", 24, Color.RED), 300, 300));
+  }
+
+  //tests onKeyEvent(String) method
+  boolean testOnKeyEvent(Tester t) {
+    return t.checkExpect(worldEnded.onKeyEvent("g"), worldEnded)
+        && t.checkExpect(world1.onKeyEvent("g"), world1)
+        && t.checkExpect(world5.onKeyEvent("r"), worldTest5)
+        && t.checkExpect(world5.onKeyEvent("y"), world5)
+        && t.checkExpect(world6.onKeyEvent("r"), worldTest6)
+        && t.checkExpect(world7.onKeyEvent("y"), worldTest8)
+        && t.checkExpect(world6.onKeyEvent("y"), worldTest7);
+  }
+
+  //tests isActive
+  boolean testIsActive(Tester t) {
+    return
+    // tests an active word
+    t.checkExpect(word1.isActive(), true)
+        // tests an inactive word
+        && t.checkExpect(word2.isActive(), false);
+
+  }
+
+  // tests compare
+  boolean testCompare(Tester t) {
+    return
+    // tests an active word
+    t.checkExpect(word3.compare(word3), true)
+        // tests an inactive word
+        && t.checkExpect(word11.compare(word12), false);
+
+  }
+
+  // tests compareHelper
+  boolean testCompareHelper(Tester t) {
+    return
+    // tests an active word
+    t.checkExpect(word5.compareHelper("dog"), true)
+        // tests an inactive word
+        && t.checkExpect(word6.compareHelper("dog"), false);
+  }
+
+  // tests wordstuff
+  boolean testWordstuff(Tester t) {
+    return
+    // tests an active word
+    t.checkExpect(word7.wordstuff("f"), word07)
+        // tests an inactive word
+        && t.checkExpect(word8.wordstuff("b"), word8);
+  }
+
+  // tests blanky
+  boolean testBlanky(Tester t) {
+    return
+    // tests an active empty word
+    t.checkExpect(wordMtA.blanky(), true)
+        // tests an active non-empty word
+        && t.checkExpect(word7.blanky(), false)
+        // tests an inactive non-empty word
+        && t.checkExpect(word10.blanky(), false)
+        // tests an inactive empty word
+        && t.checkExpect(word8.blanky(), false);
+  }
+
+  // tests draw
+  boolean testNullChar(Tester t) {
+    return
+    // tests an active char that is null
+    t.checkExpect(charA.nullChar("a"), false)
+        // tests an active char that is not null
+        && t.checkExpect(charAf.nullChar("b"), false)
+        // tests an inactive char that is null
+        && t.checkExpect(charI.nullChar(""), false)
+        // tests an inactive that is not null
+        && t.checkExpect(charIf.nullChar("b"), true);
+  }
+
+  // tests createActive
+  boolean testCreateActive(Tester t) {
+    return
+    // tests an active word
+    t.checkExpect(word21.createActive(), word21)
+        // tests an inactive word
+        && t.checkExpect(word22.createActive(), word022);
+  }
+
+}
+
